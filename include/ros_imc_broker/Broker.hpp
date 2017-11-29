@@ -35,7 +35,8 @@
 
 // Local headers.
 #include <ros_imc_broker/Mappings.hpp>
-#include <ros_imc_broker/TcpLink.hpp>
+#include <ros_imc_broker/TcpServer.hpp>
+#include <ros_imc_broker/UdpServer.hpp>
 #include <ros_imc_broker/BrokerParamsConfig.h>
 
 namespace ros_imc_broker
@@ -45,8 +46,10 @@ namespace ros_imc_broker
   public:
     Broker(ros::NodeHandle& node_handle):
       nh_(node_handle),
-      tcp_client_(NULL),
-      tcp_client_thread_(NULL)
+      tcp_server_(NULL),
+      udp_server_(NULL),
+      tcp_server_thread_(NULL),
+      udp_server_thread_(NULL)
     {
       srv_.setCallback(boost::bind(&Broker::onReconfigure, this, _1, _2));
       advertiseAll();
@@ -62,9 +65,11 @@ namespace ros_imc_broker
     //! ROS node handle.
     ros::NodeHandle& nh_;
     //! TCP client to DUNE's server.
-    TcpLink* tcp_client_;
+    TcpServer* tcp_server_;
+    UdpServer* udp_server_;
     //! TCP client thread.
-    boost::thread* tcp_client_thread_;
+    boost::thread* tcp_server_thread_;
+    boost::thread* udp_server_thread_;
     //! Map of publishers.
     std::map<unsigned, ros::Publisher> pubs_;
     //! Map of subscribers by topic.
@@ -75,25 +80,37 @@ namespace ros_imc_broker
     void
     onReconfigure(ros_imc_broker::BrokerParamsConfig& config, uint32_t level)
     {
-      ROS_INFO("reconfigure request: %s %s",
-               config.server_addr.c_str(),
-               config.server_port.c_str());
+      ROS_INFO("reconfigure request: %s %s %s %s",
+               config.tcp_addr.c_str(),
+               config.tcp_port.c_str(),
+               config.udp_addr.c_str(),
+               config.udp_port.c_str());
 
-      start(config.server_addr, config.server_port);
+      start(config.tcp_addr, config.tcp_port,
+            config.udp_addr, config.udp_port);
     }
 
     void
     stop(void)
     {
-      if (tcp_client_thread_ == NULL)
+      if (tcp_server_thread_ == NULL) {
         return;
+      } else if (udp_server_thread_ == NULL) {
+        return;
+      }
 
-      tcp_client_thread_->interrupt();
-      tcp_client_thread_->join();
-      delete tcp_client_thread_;
-      tcp_client_thread_ = NULL;
-      delete tcp_client_;
-      tcp_client_ = NULL;
+      tcp_server_thread_->interrupt();
+      udp_server_thread_->interrupt();
+      tcp_server_thread_->join();
+      udp_server_thread_->join();
+      delete tcp_server_thread_;
+      delete udp_server_thread_;
+      tcp_server_thread_ = NULL;
+      udp_server_thread_ = NULL;
+      delete tcp_server_;
+      delete udp_server_;
+      tcp_server_ = NULL;
+      udp_server_ = NULL;
     }
 
     std::map<unsigned, ros::Publisher>::iterator
@@ -129,12 +146,17 @@ namespace ros_imc_broker
     //! @param[in] addr server address.
     //! @param[in] port server port.
     void
-    start(const std::string& addr, const std::string& port)
-    {
+    start(const std::string& tcp_addr, const std::string& tcp_port,
+          const std::string& udp_addr, const std::string& udp_port) {
       stop();
-      tcp_client_ = new TcpLink(boost::bind(&Broker::sendToRosBus, this, _1));
-      tcp_client_->setServer(addr, port);
-      tcp_client_thread_ = new boost::thread(boost::ref(*tcp_client_));
+
+      boost::asio::io_service io_service;
+      ROS_INFO_STREAM("Starting TCP Server at port " << tcp_port << " ...");
+      tcp_server_ = new TcpServer(&io_service, boost::bind(&Broker::sendToRosBus, this, _1), atoi(tcp_port.c_str()));
+      tcp_server_thread_ = new boost::thread(boost::ref(*tcp_server_));
+      ROS_INFO_STREAM("Starting UDP Server at " << udp_addr << ":" << udp_port);
+      udp_server_ = new UdpServer(&io_service, udp_addr, atoi(udp_port.c_str()));
+      udp_server_thread_ = new boost::thread(boost::ref(*udp_server_));
     }
 
     //! Send message to TCP server.
@@ -143,7 +165,11 @@ namespace ros_imc_broker
     void
     sendToTcpServer(const T& msg)
     {
-      tcp_client_->write(&msg);
+      if (msg.getIdStatic() == 151) {
+        udp_server_->Broadcast(&msg);
+      } else {
+        tcp_server_->Write(&msg);
+      }
     }
 
     //! Subscribe to all IMC messages received over the ROS message bus.
