@@ -154,7 +154,6 @@ include_directories(
 add_library(imc_broker_factory include/IMC/Base/Factory.cpp)
 add_executable(ros_imc_broker_node src/broker_node.cpp)
 add_dependencies(ros_imc_broker_node ${PROJECT_NAME}_gencfg)
-# add_executable(follow_reference_node src/follow_reference_node.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
@@ -165,11 +164,6 @@ target_link_libraries(ros_imc_broker_node
   ${catkin_LIBRARIES}
   imc_broker_factory
 )
-
-# target_link_libraries(follow_reference_node
-#   ${catkin_LIBRARIES}
-#   imc_broker_factory
-# )
 
 #############
 ## Install ##
