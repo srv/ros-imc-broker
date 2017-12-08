@@ -254,7 +254,7 @@ namespace ros_imc_broker
       {
         try
         {
-          port_used = port_used + i;
+          port_used = port_ + i;
           socket_.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), port_used));
           bound = true;
           break;
@@ -266,7 +266,7 @@ namespace ros_imc_broker
       }
 
       if (!bound)
-          throw std::runtime_error("Could not bind to any broadcast port.");
+          throw std::runtime_error("Could not bind to any port.");
 
       if (multicast_)
       {
@@ -320,7 +320,7 @@ namespace ros_imc_broker
             }
             else
             {
-              //std::cerr << "Invalid message received on UDP. " << bytes_recvd << std::endl;
+              ROS_DEBUG("Invalid message received on UDP. Bytes received %d", (int)bytes_recvd);
             }
           }
 
