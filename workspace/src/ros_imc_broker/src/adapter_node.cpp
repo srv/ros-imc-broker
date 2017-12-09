@@ -24,6 +24,7 @@
 
 // Local headers.
 #include <ros_imc_broker/VehicleAdapter.hpp>
+#include <ros_imc_broker/Adapter.hpp>
 
 int
 main(int argc, char** argv)
@@ -31,7 +32,7 @@ main(int argc, char** argv)
   ros::init(argc, argv, "ros_imc_adapter_node", ros::init_options::AnonymousName);
 
   ros::NodeHandle nh;
-  ros_imc_broker::VehicleAdapter adapter(nh);
+  ros_imc_broker::Adapter adapter(nh);
   ros::spin();
 
   return 0;

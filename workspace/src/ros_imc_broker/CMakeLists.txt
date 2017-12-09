@@ -110,6 +110,7 @@ find_package(Boost REQUIRED COMPONENTS system)
 ## Generate dynamic reconfigure parameters in the 'cfg' folder
 generate_dynamic_reconfigure_options(
   cfg/BrokerParams.cfg
+  cfg/AdapterParams.cfg
 )
 
 ###################################
@@ -155,6 +156,8 @@ add_dependencies(ros_imc_broker_node ${PROJECT_NAME}_gencfg)
 add_executable(follow_reference_node src/follow_reference_node.cpp include/IMC/Base/Factory.cpp)
 add_executable(params_changer_node src/params_changer_node.cpp include/IMC/Base/Factory.cpp)
 add_executable(ros_imc_adapter_node src/adapter_node.cpp include/IMC/Base/Factory.cpp)
+add_dependencies(ros_imc_adapter_node ${PROJECT_NAME}_gencfg)
+add_dependencies(ros_imc_adapter_node ${PROJECT_NAME}_gencfg)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
