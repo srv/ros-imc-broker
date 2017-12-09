@@ -183,6 +183,17 @@ namespace ros_imc_broker
             boost::bind(&ros_imc_broker::UdpLink::handle_send_to, this,
                 boost::asio::placeholders::error,
                 boost::asio::placeholders::bytes_transferred));
+          
+          if (broadcast_)
+          {
+            boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address::from_string("255.255.255.255"), pt);
+            socket_.async_send_to(
+              boost::asio::buffer(out_buffer, rv),
+              endpoint,
+              boost::bind(&ros_imc_broker::UdpLink::handle_send_to, this,
+                  boost::asio::placeholders::error,
+                  boost::asio::placeholders::bytes_transferred));
+          }
           ROS_INFO("sending %s to %s:%d sent %d", message->getName(), destination_addr.c_str(), pt, (int)rv);
         }
         catch (std::exception& e)
