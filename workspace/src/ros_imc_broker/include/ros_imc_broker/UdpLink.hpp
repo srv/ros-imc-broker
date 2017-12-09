@@ -102,7 +102,7 @@ namespace ros_imc_broker
       multicast_(false),
       multicast_on_(false),
       broadcast_(broadcast),
-      multicast_addr_(NULL),
+      multicast_addr_(""),
       port_(port),
       port_range_(1)
     {
@@ -254,7 +254,7 @@ namespace ros_imc_broker
     {
       multicast_on_ = false;
 
-      ROS_INFO("connecting to multicast %s@%d", multicast_ ? multicast_addr_.c_str() : "", port_);
+      ROS_INFO("connecting to %s@%d", multicast_ ? multicast_addr_.c_str() : "", port_);
 
       socket_.set_option(boost::asio::ip::udp::socket::reuse_address(true));
       if (broadcast_)
