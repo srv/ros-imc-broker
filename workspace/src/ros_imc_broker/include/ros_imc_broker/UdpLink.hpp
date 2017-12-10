@@ -358,7 +358,7 @@ namespace ros_imc_broker
       {
         if (!error && bytes_sent > 0)
         {
-          ROS_DEBU("sent %d", (int)bytes_sent);
+          ROS_DEBUG("sent %d", (int)bytes_sent);
         }
         else
         {
