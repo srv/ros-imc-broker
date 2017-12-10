@@ -16,7 +16,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA          *
 // 02110-1301 USA.                                                        *
 //*************************************************************************
-//Author: Paulo Dias                                                      *
+// Author: Paulo Dias                                                     *
 //*************************************************************************
 
 #ifndef ROS_IMC_BROKER_UDP_LINK_HPP_INCLUDED_
@@ -94,8 +94,10 @@ namespace ros_imc_broker
     //! Constructor for non multicast port. It starts automaticaly.
     //! @param[in] recv_handler handler function for received messages.
     //! @param[in] port the port to bind to.
+    //! @param[in] port_range the port range to use.
     //! @param[in] broadcast if broadcast is used or not.
-    UdpLink(boost::function<void (IMC::Message*)> recv_handler, int port, bool broadcast = false):
+    UdpLink(boost::function<void (IMC::Message*)> recv_handler, int port,
+        int port_range = 1, bool broadcast = false):
       socket_(io_service_, boost::asio::ip::udp::v4()),
       recv_handler_(recv_handler),
       connected_(false),
@@ -104,7 +106,7 @@ namespace ros_imc_broker
       broadcast_(broadcast),
       multicast_addr_(""),
       port_(port),
-      port_range_(1)
+      port_range_(port_range)
     {
       start();
     }
@@ -152,6 +154,12 @@ namespace ros_imc_broker
     isMulticast(void)
     {
       return multicast_;
+    }
+
+    int
+    bindedPort(void)
+    {
+      return port_binded_;
     }
 
     void
@@ -226,6 +234,8 @@ namespace ros_imc_broker
     int port_;
     //! Port range to use
     int port_range_;
+    //! Port binded to
+    int port_binded_;
     //! Indicates if is to use nulticast
     bool multicast_;
     //! Indicates if nulticast is in use
@@ -268,6 +278,7 @@ namespace ros_imc_broker
           port_used = port_ + i;
           socket_.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), port_used));
           bound = true;
+          port_binded_ = port_used;
           break;
         }
         catch (std::exception &ex)
@@ -295,7 +306,11 @@ namespace ros_imc_broker
       }
 
       connected_ = true;
-      ROS_INFO("connected to multicast %s@%d", multicast_ ? multicast_addr_.c_str() : "", port_used);
+      ROS_INFO("connected to %s%s%s@%d",
+          multicast_on_ ? "multicast " : "",
+          broadcast_ ? "broadcast " : "",
+          multicast_ ? multicast_addr_.c_str() : "",
+          port_used);
     }
 
     void
