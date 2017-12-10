@@ -50,7 +50,7 @@ namespace ros_imc_broker
   //! This class implements a UDP server that can be used as normal
   //! unicast or mullticast.
   //!
-  //! @author PAulo Dias <pdias@lsts.pt>
+  //! @author Paulo Dias <pdias@lsts.pt>
   class UdpLink
   {
   public:
@@ -192,16 +192,6 @@ namespace ros_imc_broker
                 boost::asio::placeholders::error,
                 boost::asio::placeholders::bytes_transferred));
           
-          if (broadcast_)
-          {
-            boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address::from_string("255.255.255.255"), pt);
-            socket_.async_send_to(
-              boost::asio::buffer(out_buffer, rv),
-              endpoint,
-              boost::bind(&ros_imc_broker::UdpLink::handle_send_to, this,
-                  boost::asio::placeholders::error,
-                  boost::asio::placeholders::bytes_transferred));
-          }
           ROS_INFO("sending %s to %s:%d sent %d", message->getName(), destination_addr.c_str(), pt, (int)rv);
         }
         catch (std::exception& e)
@@ -368,7 +358,7 @@ namespace ros_imc_broker
       {
         if (!error && bytes_sent > 0)
         {
-          ROS_INFO("sent %d", (int)bytes_sent);
+          ROS_DEBU("sent %d", (int)bytes_sent);
         }
         else
         {
