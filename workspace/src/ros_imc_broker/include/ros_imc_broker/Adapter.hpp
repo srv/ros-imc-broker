@@ -43,12 +43,25 @@
 #include <ros_imc_broker/BrokerParamsConfig.h>
 #include <ros_imc_broker/AdapterParamsConfig.h>
 
+#include <ros_imc_broker/NetworkUtil.hpp>
+
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
 #define IMC_ENTITY_ANY_ID 0xFF
 
 namespace ros_imc_broker
 {
+  struct Destination
+  {
+    // Destination address.
+    std::string addr;
+    // Destination port.
+    unsigned port;
+    // True if address is local.
+    bool local;
+  };
+
+
   class Adapter
   {
   public:
@@ -61,7 +74,6 @@ namespace ros_imc_broker
       srv_.setCallback(boost::bind(&Adapter::onReconfigure, this, _1, _2));
       advertiseAll();
       subscribeAll();
-      setupPeriodicSenders();
     }
 
     ~Adapter(void)
@@ -86,17 +98,24 @@ namespace ros_imc_broker
     //! UDP client to DUNE's server.
     UdpLink* udp_client_;
     UdpLink* udp_multicast_;
+    std::string multicast_addr_;
+    int multicast_port_;
+    int multicast_port_range_;
     std::vector<ros::Timer> timers_;
     // Messages
     IMC::Announce announce_msg_;
     IMC::Heartbeat heartbeat_msg_;
     std::string system_name_;
+    IMC::SystemType system_type_;
     int system_imc_id_;
     // Additional external services.
     std::vector<std::string> adi_services_ext_;
     // External services.
     std::set<std::string> uris_ext_;
     IMC::EstimatedState* estimated_state_msg_;
+    std::vector<boost::asio::ip::address> network_interfaces_;
+    std::vector<Destination> multicast_destinations_;
+    bool enable_loopback_;
 
     void
     onReconfigure(ros_imc_broker::AdapterParamsConfig& config, uint32_t level)
@@ -106,19 +125,54 @@ namespace ros_imc_broker
                config.system_imc_id);
 
       system_name_ = config.system_name;
+      system_type_ = translateSystem(config.system_type);
       system_imc_id_ = config.system_imc_id;
 
       config.additional_services;
+
+      enable_loopback_ = config.enable_loopback;
 
       start(config.udp_port, config.udp_port_tries, config.multicast_addr,
           config.multicast_port, config.multicast_port_range);
     }
 
+    IMC::SystemType
+    translateSystem(std::string type)
+    {
+      for (unsigned int i = 0; i < type.size(); ++i)
+        type[i] = std::tolower(type[i]);
+
+      if (type == "uuv")
+        return IMC::SYSTEMTYPE_UUV;
+      else if (type == "auv")
+        return IMC::SYSTEMTYPE_UUV;
+      else if (type == "uav")
+        return IMC::SYSTEMTYPE_UAV;
+      else if (type == "usv")
+        return IMC::SYSTEMTYPE_USV;
+      else if (type == "ugv")
+        return IMC::SYSTEMTYPE_UGV;
+      else if (type == "ccu")
+        return IMC::SYSTEMTYPE_CCU;
+      else if (type == "mobilesensor")
+        return IMC::SYSTEMTYPE_MOBILESENSOR;
+      else if (type == "staticsensor")
+        return IMC::SYSTEMTYPE_STATICSENSOR;
+      else if (type == "humansensor")
+        return IMC::SYSTEMTYPE_HUMANSENSOR;
+      else if (type == "wsn")
+        return IMC::SYSTEMTYPE_WSN;
+      else
+        return IMC::SYSTEMTYPE_UUV;
+    }
+    
     void
     stop(void)
     {
       if (udp_client_ == NULL)
         return;
+
+      stopPeriodicSenders();
 
       udp_client_->stop();
       delete udp_client_;
@@ -138,7 +192,7 @@ namespace ros_imc_broker
         const int& multicast_port_range)
     {
       stop();
-
+      
       uid_ = (long)(ros::Time::now().toSec() / 1E3);
 
       udp_client_ = new UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
@@ -146,6 +200,13 @@ namespace ros_imc_broker
 
       udp_multicast_ = new UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
           multicast_addr, multicast_port, multicast_port_range);
+      
+      multicast_addr_ = multicast_addr;
+      multicast_port_ = multicast_port;
+      multicast_port_range_ = multicast_port_range;
+
+      probeInterfacesForMulticast();
+      setupPeriodicSenders();
     }
 
     std::map<unsigned, ros::Publisher>::iterator
@@ -165,6 +226,9 @@ namespace ros_imc_broker
     sendToRosBusMulticast(const IMC::Message* msg)
     {
       // Filter self sent messages
+      if (msg->getSource() == system_imc_id_)
+        return;
+
       sendToRosBus(msg);
     }
 
@@ -184,32 +248,85 @@ namespace ros_imc_broker
       titr->second(itr->second, msg);
     }
 
-    //! Send message to TCP server.
     //! @param[in] msg message instance.
     template<typename T>
     void
     sendToImcSystems(const T& msg)
     {
-      T* nMsg = msg.clone();
-      nMsg->setSource((uint16_t)system_imc_id_);
-      if (nMsg->getTimeStamp() <= 0)
-        nMsg->setTimeStamp(ros::Time::now().toSec());
-      //@FIXME Set the proper destination
-      udp_client_->send(nMsg, "127.0.0.1", 6001);
-
-      if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
-      { // Let us save the estimated state
-        if (estimated_state_msg_ == NULL)
-          delete estimated_state_msg_;
-        estimated_state_msg_ = IMC::EstimatedState::cast(nMsg);
-      }
-      else
+      if (udp_client_ == NULL)
       {
-        delete nMsg;
+        ROS_WARN("udp is closed");
+        return;
       }
-      nMsg = NULL;
+
+      try
+      {
+        T* nMsg = msg.clone();
+        nMsg->setSource((uint16_t)system_imc_id_);
+        if (nMsg->getTimeStamp() <= 0)
+          nMsg->setTimeStamp(ros::Time::now().toSec());
+        //@FIXME Set the proper destination
+        udp_client_->send(nMsg, "127.0.0.1", 6001);
+
+        if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
+        { // Let us save the estimated state
+          if (estimated_state_msg_ == NULL)
+            delete estimated_state_msg_;
+          estimated_state_msg_ = IMC::EstimatedState::cast(nMsg);
+        }
+        else
+        {
+          delete nMsg;
+        }
+        nMsg = NULL;
+      }
+      catch (std::exception & ex)
+      {
+        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+            << ex.what() << std::endl;
+      }
 
       ROS_INFO("sent.....x %d:", udp_client_->isConnected());
+    }
+
+    template<typename T>
+    void
+    sendToImcSystemsMulticast(const T& msg)
+    {
+      if (udp_multicast_ == NULL)
+      {
+        ROS_WARN("udp multicast is closed");
+        return;
+      }
+
+      ROS_INFO("r1 %d", (int)multicast_destinations_.size());
+
+      try
+      {
+        T* nMsg = msg.clone();
+        nMsg->setSource((uint16_t)system_imc_id_);
+        if (nMsg->getTimeStamp() <= 0)
+          nMsg->setTimeStamp(ros::Time::now().toSec());
+
+        ROS_INFO("r2");
+        
+        for (unsigned i = 0; i < multicast_destinations_.size(); ++i)
+        {
+          ROS_INFO("r2.1");
+          udp_multicast_->send(nMsg, multicast_destinations_[i].addr, multicast_destinations_[i].port);
+          ROS_INFO("r2.2");
+        }
+
+        delete nMsg;
+        nMsg = NULL;
+      }
+      catch (std::exception & ex)
+      {
+        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+            << ex.what() << std::endl;
+      }
+
+      ROS_INFO("multicast sent.....x %d:", udp_multicast_->isConnected());
     }
 
     //! Subscribe to all IMC messages received over the ROS message bus.
@@ -252,10 +369,98 @@ namespace ros_imc_broker
     }
 
     void
-    setupPeriodicSenders()
+    setupPeriodicSenders(void)
     {
+      timers_.push_back(nh_.createTimer(ros::Duration(30), &Adapter::probeInterfacesForMulticast, this));
       timers_.push_back(nh_.createTimer(ros::Duration(1), &Adapter::heartbeatSender, this));
       timers_.push_back(nh_.createTimer(ros::Duration(10), &Adapter::announceSender, this));
+    }
+
+    void
+    stopPeriodicSenders(void)
+    {
+      for (unsigned i = 0; i < timers_.size(); ++i)
+      {
+        timers_[i].stop();
+      }
+      timers_.clear();
+    }
+
+    void
+    probeInterfacesForMulticast(const ros::TimerEvent&)
+    {
+      probeInterfacesForMulticast();
+    }
+
+    void
+    probeInterfacesForMulticast(void)
+    {
+      multicast_destinations_.clear();
+
+      // Setup loopback.
+      if (enable_loopback_)
+      {
+        for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+        {
+          Destination dst;
+          dst.port = i;
+          dst.addr = "127.0.0.1";
+          dst.local = true;
+          multicast_destinations_.push_back(dst);
+        }
+      }
+
+      // Setup multicast.
+      for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+      {
+        Destination dst;
+        dst.port = i;
+        dst.addr = multicast_addr_;
+        dst.local = false;
+        multicast_destinations_.push_back(dst);
+      }
+
+      // Setup broadcast.
+      {
+        for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+        {
+          Destination dst;
+          dst.port = i;
+          dst.addr = "255.255.255.255";
+          dst.local = false;
+          multicast_destinations_.push_back(dst);
+        }
+
+        try
+        {
+          std::vector<boost::asio::ip::address> itfs = NetworkUtil::getNetworkInterfaces();
+          for (unsigned i = 0; i < itfs.size(); ++i)
+          {
+            if (!itfs[i].is_v4())
+              continue;
+            
+            // Discard loopback addresses. @FIXME any filter
+            if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
+              continue;
+
+            for (unsigned j = multicast_port_; j < multicast_port_ + multicast_port_range_; ++j)
+            {
+              Destination dst;
+              dst.port = j;
+              dst.addr = itfs[i].to_v4().broadcast().to_string();
+              dst.local = false;
+              multicast_destinations_.push_back(dst);
+            }
+          }
+        }
+        catch (std::exception & ex)
+        {
+          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+              << ex.what() << std::endl;
+        }
+      }
+
+      ROS_INFO("found %d multicast destinations", (int)multicast_destinations_.size());
     }
 
     void
@@ -269,7 +474,7 @@ namespace ros_imc_broker
     announceSender(const ros::TimerEvent&)
     {
       announce_msg_.sys_name = system_name_;
-      announce_msg_.sys_type = IMC::SYSTEMTYPE_UUV;
+      announce_msg_.sys_type = system_type_;
       announce_msg_.owner = IMC_NULL_ID;
       if (estimated_state_msg_ != NULL)
       {
@@ -294,7 +499,7 @@ namespace ros_imc_broker
 
       announce_msg_.setDestination(IMC_MULTICAST_ID);
       announce_msg_.setTimeStamp(0);
-      sendToImcSystems(announce_msg_);
+      sendToImcSystemsMulticast(announce_msg_);
     }
 
   };

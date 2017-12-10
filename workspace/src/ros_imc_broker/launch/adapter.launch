@@ -1,7 +1,10 @@
 <launch>
   <node pkg="ros_imc_broker" type="ros_imc_adapter_node" name="ros_imc_adapter_node" output="screen">
-    <param name="system_name" value="Bogus"/>
+    <param name="system_name" value="bogus"/>
+    <param name="system_type" value="uuv"/>
     <param name="system_imc_id" value="8226"/> <!--0x2022-->
+
+    <param name="enable_loopback" value="True"/>
 
     <param name="udp_port" value="6002"/>
     <!--param name="udp_port_tries" value="10"/-->
@@ -10,4 +13,5 @@
     <!--param name="multicast_port" value="30100""/-->
     <!--param name="multicast_port_range" value="5"/-->
   </node>
+  <node pkg="ros_imc_broker" type="params_changer_node" name="settings" output="screen"/>
 </launch>
