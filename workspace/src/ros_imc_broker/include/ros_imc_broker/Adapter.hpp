@@ -16,8 +16,8 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA          *
 // 02110-1301 USA.                                                        *
 //*************************************************************************
-//Author: Paulo Dias                                                      *
-//Author: Ricardo Martins (original)                                      *
+// Author: Paulo Dias                                                     *
+// Author: Ricardo Martins (original)                                     *
 //*************************************************************************
 
 #ifndef ROS_IMC_BROKER_ADAPTER_HPP_INCLUDED_
@@ -110,8 +110,8 @@ namespace ros_imc_broker
 
       config.additional_services;
 
-      start(config.udp_port, config.multicast_addr, config.multicast_port, 
-          config.multicast_port_range);
+      start(config.udp_port, config.udp_port_tries, config.multicast_addr,
+          config.multicast_port, config.multicast_port_range);
     }
 
     void
@@ -133,7 +133,7 @@ namespace ros_imc_broker
     //! @param[in] addr server address.
     //! @param[in] port server port.
     void
-    start(const int& udp_port,
+    start(const int& udp_port, const int& udp_port_tries,
         const std::string& multicast_addr, const int& multicast_port,
         const int& multicast_port_range)
     {
@@ -142,12 +142,10 @@ namespace ros_imc_broker
       uid_ = (long)(ros::Time::now().toSec() / 1E3);
 
       udp_client_ = new UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
-          udp_port);
-      ROS_INFO("r4");
+          udp_port, udp_port_tries);
 
       udp_multicast_ = new UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
           multicast_addr, multicast_port, multicast_port_range);
-      ROS_INFO("r5");
     }
 
     std::map<unsigned, ros::Publisher>::iterator
@@ -196,7 +194,8 @@ namespace ros_imc_broker
       nMsg->setSource((uint16_t)system_imc_id_);
       if (nMsg->getTimeStamp() <= 0)
         nMsg->setTimeStamp(ros::Time::now().toSec());
-      udp_client_->send(nMsg, "127.0.0.1", 6016);
+      //@FIXME Set the proper destination
+      udp_client_->send(nMsg, "127.0.0.1", 6001);
 
       if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
       { // Let us save the estimated state
