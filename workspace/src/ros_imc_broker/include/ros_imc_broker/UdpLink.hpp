@@ -135,7 +135,7 @@ namespace ros_imc_broker
       if (isConnected())
       {
         boost::system::error_code ec;
-        socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+        socket_.shutdown(boost::asio::ip::udp::socket::shutdown_both, ec);
         socket_.close(ec);
         io_service_.stop();
         worker_threads_.join_all();
