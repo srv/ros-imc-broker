@@ -17,7 +17,7 @@
 // 02110-1301 USA.                                                        *
 //*************************************************************************
 // Author: Paulo Dias                                                     *
-// Author: Ricardo Martins (original)                                     *
+// Author: Ricardo Martins (original Broker.hpp)                          *
 //*************************************************************************
 
 #ifndef ROS_IMC_BROKER_ADAPTER_HPP_INCLUDED_
