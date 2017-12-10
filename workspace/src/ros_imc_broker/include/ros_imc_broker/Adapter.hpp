@@ -193,7 +193,7 @@ namespace ros_imc_broker
     {
       stop();
       
-      uid_ = (long)(ros::Time::now().toSec() / 1E3);
+      uid_ = (long)(ros::Time::now().toSec() * 1E3);
 
       udp_client_ = new UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
           udp_port, udp_port_tries);
@@ -484,22 +484,65 @@ namespace ros_imc_broker
         announce_msg_.height = estimated_state_msg_->height;
       }
 
+      // Services collection
+      announce_msg_.services.clear();
 
       std::ostringstream vers;
       vers << "ros://0.0.0.0/version/" << ROS_VERSION;
-      uris_ext_.insert(vers.str());
+      addURI(announce_msg_, vers.str());
 
       std::ostringstream uid;
       uid << "ros://0.0.0.0/uid/" << uid_;
-      uris_ext_.insert(uid.str());
+      addURI(announce_msg_, uid.str());
 
       std::ostringstream imcvers;
       imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
-      uris_ext_.insert(imcvers.str());
+      addURI(announce_msg_, imcvers.str());
+      
+      std::set<std::string> uris_info;
+      try
+      {
+        std::vector<boost::asio::ip::address> itfs = NetworkUtil::getNetworkInterfaces();
+        for (unsigned i = 0; i < itfs.size(); ++i)
+        {
+          if (!itfs[i].is_v4())
+            continue;
+          
+          // Discard loopback addresses.
+          if (itfs[i].is_loopback())
+            continue;
+
+          if (udp_client_ != NULL && udp_client_->isConnected())
+          {
+            std::ostringstream udps;
+            udps << "imc+udp://" << itfs[i].to_string() << ":" << udp_client_->bindedPort()
+                    << "/";
+            uris_info.insert(udps.str());
+          }
+        }
+      }
+      catch (std::exception & ex)
+      {
+        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+            << ex.what() << std::endl;
+      }
+
+      std::set<std::string>::iterator itr = uris_info.begin();
+      for (itr = uris_info.begin(); itr != uris_info.end(); ++itr)
+        addURI(announce_msg_, *itr);
 
       announce_msg_.setDestination(IMC_MULTICAST_ID);
       announce_msg_.setTimeStamp(0);
       sendToImcSystemsMulticast(announce_msg_);
+    }
+
+    void
+    addURI(IMC::Announce& announce, const std::string& uri)
+    {
+      if (!announce.services.empty())
+        announce.services.append(";");
+
+      announce.services.append(uri);
     }
 
   };
