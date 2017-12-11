@@ -38,13 +38,13 @@
 // Local headers.
 #include <ros_imc_broker/Mappings.hpp>
 #include <ros_imc_broker/TcpLink.hpp>
-#include <ros_imc_broker/UdpLink.hpp>
+#include <ros_imc_broker/Network/UdpLink.hpp>
 
 #include <ros_imc_broker/BrokerParamsConfig.h>
 #include <ros_imc_broker/AdapterParamsConfig.h>
 
-#include <ros_imc_broker/NetworkUtil.hpp>
-#include <ros_imc_broker/StringUtil.hpp>
+#include <ros_imc_broker/Network/NetworkUtil.hpp>
+#include <ros_imc_broker/Util/String.hpp>
 
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
@@ -96,8 +96,8 @@ namespace ros_imc_broker
     //! Dynamic reconfigure server.
     dynamic_reconfigure::Server<ros_imc_broker::AdapterParamsConfig> srv_;
     //! UDP client to DUNE's server.
-    UdpLink* udp_client_;
-    UdpLink* udp_multicast_;
+    Network::UdpLink* udp_client_;
+    Network::UdpLink* udp_multicast_;
     std::string multicast_addr_;
     int multicast_port_;
     int multicast_port_range_;
@@ -136,11 +136,11 @@ namespace ros_imc_broker
       // Parsing static desinations
       static_destinations_.clear();
       std::vector<std::string> static_dest;
-      StringUtil::split(config.static_destinations_addrs, ",", static_dest);
+      Util::String::split(config.static_destinations_addrs, ",", static_dest);
       for (unsigned int i = 0; i < static_dest.size(); ++i)
       {
         std::vector<std::string> addr_port;
-        StringUtil::split(config.static_destinations_addrs, ":", addr_port);
+        Util::String::split(config.static_destinations_addrs, ":", addr_port);
         if (addr_port.size() != 2)
           continue;
         try
@@ -165,7 +165,7 @@ namespace ros_imc_broker
     IMC::SystemType
     translateSystem(std::string type)
     {
-      StringUtil::toLowerCase(type);
+      Util::String::toLowerCase(type);
 
       if (type == "uuv")
         return IMC::SYSTEMTYPE_UUV;
@@ -220,10 +220,10 @@ namespace ros_imc_broker
       
       uid_ = (long)(ros::Time::now().toSec() * 1E3);
 
-      udp_client_ = new UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
+      udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
           udp_port, udp_port_tries);
 
-      udp_multicast_ = new UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
+      udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
           multicast_addr, multicast_port, multicast_port_range);
       
       multicast_addr_ = multicast_addr;
@@ -457,7 +457,7 @@ namespace ros_imc_broker
 
         try
         {
-          std::vector<boost::asio::ip::address> itfs = NetworkUtil::getNetworkInterfaces();
+          std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
           for (unsigned i = 0; i < itfs.size(); ++i)
           {
             if (!itfs[i].is_v4())
@@ -533,7 +533,7 @@ namespace ros_imc_broker
       std::set<std::string> uris_info;
       try
       {
-        std::vector<boost::asio::ip::address> itfs = NetworkUtil::getNetworkInterfaces();
+        std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
         for (unsigned i = 0; i < itfs.size(); ++i)
         {
           if (!itfs[i].is_v4())

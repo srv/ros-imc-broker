@@ -33,48 +33,51 @@
 
 namespace ros_imc_broker
 {
-  //!
-  //! @author Paulo Dias <pdias@lsts.pt>
-  class NetworkUtil
+  namespace Network
   {
-  public:
-
-    static
-    std::vector<boost::asio::ip::address>
-    getNetworkInterfaces()
+    //!
+    //! @author Paulo Dias <pdias@lsts.pt>
+    class NetworkUtil
     {
-      std::vector<boost::asio::ip::address> address_list;
+    public:
 
-      boost::asio::io_service io_service;
-
-      boost::asio::ip::tcp::resolver resolver(io_service);
-      boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
-      boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query);
-
-      while(it != boost::asio::ip::tcp::resolver::iterator())
+      static
+      std::vector<boost::asio::ip::address>
+      getNetworkInterfaces()
       {
-          try
-          {
-            boost::asio::ip::address addr = (it++)->endpoint().address();
-            if(addr.is_v4())
+        std::vector<boost::asio::ip::address> address_list;
+
+        boost::asio::io_service io_service;
+
+        boost::asio::ip::tcp::resolver resolver(io_service);
+        boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
+        boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query);
+
+        while(it != boost::asio::ip::tcp::resolver::iterator())
+        {
+            try
             {
-              std::cout << "IPv4 address: " << addr.to_string() << std::endl;
-              address_list.push_back(addr);
+              boost::asio::ip::address addr = (it++)->endpoint().address();
+              if(addr.is_v4())
+              {
+                std::cout << "IPv4 address: " << addr.to_string() << std::endl;
+                address_list.push_back(addr);
+              }
             }
-          }
-          catch (std::exception & ex)
-          {
-            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-                << ex.what() << std::endl;
-          }
+            catch (std::exception & ex)
+            {
+              std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+                  << ex.what() << std::endl;
+            }
+        }
+        std::cout << "Found " << address_list.size() << " IPv4 address" << std::endl;
+        return address_list;
       }
-      std::cout << "Found " << address_list.size() << " IPv4 address" << std::endl;
-      return address_list;
-    }
 
-  private:
+    private:
 
-  };
-}  
+    };
+  }
+}
 
 #endif
