@@ -25,7 +25,7 @@
 source devel/setup.bash
 
 # Start DUNE simulator.
-/opt/lsts/dune/bin/dune -c backseat -p Simulation > /dev/null 2>&1 &
+#/opt/lsts/dune/bin/dune -c backseat -p Simulation > /dev/null 2>&1 &
 
 # Start ROS IMC broker.
 roslaunch ros_imc_broker adapter.launch

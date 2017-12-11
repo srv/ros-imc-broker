@@ -44,6 +44,7 @@
 #include <ros_imc_broker/AdapterParamsConfig.h>
 
 #include <ros_imc_broker/NetworkUtil.hpp>
+#include <ros_imc_broker/StringUtil.hpp>
 
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
@@ -60,7 +61,6 @@ namespace ros_imc_broker
     // True if address is local.
     bool local;
   };
-
 
   class Adapter
   {
@@ -112,9 +112,10 @@ namespace ros_imc_broker
     std::vector<std::string> adi_services_ext_;
     // External services.
     std::set<std::string> uris_ext_;
-    IMC::EstimatedState* estimated_state_msg_;
+    IMC::EstimatedState* estimated_state_msg_ = NULL;
     std::vector<boost::asio::ip::address> network_interfaces_;
     std::vector<Destination> multicast_destinations_;
+    std::vector<Destination> static_destinations_;
     bool enable_loopback_;
 
     void
@@ -132,6 +133,31 @@ namespace ros_imc_broker
 
       enable_loopback_ = config.enable_loopback;
 
+      // Parsing static desinations
+      static_destinations_.clear();
+      std::vector<std::string> static_dest;
+      StringUtil::split(config.static_destinations_addrs, ",", static_dest);
+      for (unsigned int i = 0; i < static_dest.size(); ++i)
+      {
+        std::vector<std::string> addr_port;
+        StringUtil::split(config.static_destinations_addrs, ":", addr_port);
+        if (addr_port.size() != 2)
+          continue;
+        try
+        {
+          Destination dst;
+          dst.port = std::atoi(addr_port[1].c_str());
+          dst.addr = addr_port[0];
+          dst.local = false;
+          static_destinations_.push_back(dst);
+        }
+        catch (std::exception & ex)
+        {
+          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+              << ex.what() << std::endl;
+        }
+      }
+
       start(config.udp_port, config.udp_port_tries, config.multicast_addr,
           config.multicast_port, config.multicast_port_range);
     }
@@ -139,8 +165,7 @@ namespace ros_imc_broker
     IMC::SystemType
     translateSystem(std::string type)
     {
-      for (unsigned int i = 0; i < type.size(); ++i)
-        type[i] = std::tolower(type[i]);
+      StringUtil::toLowerCase(type);
 
       if (type == "uuv")
         return IMC::SYSTEMTYPE_UUV;
@@ -265,8 +290,13 @@ namespace ros_imc_broker
         nMsg->setSource((uint16_t)system_imc_id_);
         if (nMsg->getTimeStamp() <= 0)
           nMsg->setTimeStamp(ros::Time::now().toSec());
-        //@FIXME Set the proper destination
-        udp_client_->send(nMsg, "127.0.0.1", 6001);
+
+        //@FIXME Set the proper destination besides the static defined ones
+        // udp_client_->send(nMsg, "127.0.0.1", 6001);
+        for (unsigned int i = 0; i < static_destinations_.size(); ++i)
+        {
+          udp_client_->send(nMsg, static_destinations_[i].addr, static_destinations_[i].port);
+        }
 
         if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
         { // Let us save the estimated state
@@ -286,7 +316,7 @@ namespace ros_imc_broker
             << ex.what() << std::endl;
       }
 
-      ROS_INFO("sent.....x %d:", udp_client_->isConnected());
+      ROS_INFO("sent %s:", msg.getName());
     }
 
     template<typename T>
@@ -299,8 +329,6 @@ namespace ros_imc_broker
         return;
       }
 
-      ROS_INFO("r1 %d", (int)multicast_destinations_.size());
-
       try
       {
         T* nMsg = msg.clone();
@@ -308,13 +336,9 @@ namespace ros_imc_broker
         if (nMsg->getTimeStamp() <= 0)
           nMsg->setTimeStamp(ros::Time::now().toSec());
 
-        ROS_INFO("r2");
-        
         for (unsigned i = 0; i < multicast_destinations_.size(); ++i)
         {
-          ROS_INFO("r2.1");
           udp_multicast_->send(nMsg, multicast_destinations_[i].addr, multicast_destinations_[i].port);
-          ROS_INFO("r2.2");
         }
 
         delete nMsg;
@@ -326,7 +350,7 @@ namespace ros_imc_broker
             << ex.what() << std::endl;
       }
 
-      ROS_INFO("multicast sent.....x %d:", udp_multicast_->isConnected());
+      ROS_INFO("multicast sent %s:", msg.getName());
     }
 
     //! Subscribe to all IMC messages received over the ROS message bus.
@@ -482,6 +506,13 @@ namespace ros_imc_broker
         announce_msg_.lat = estimated_state_msg_->lat;
         announce_msg_.lon = estimated_state_msg_->lon;
         announce_msg_.height = estimated_state_msg_->height;
+      }
+      else
+      {
+        ROS_INFO("null EstimatedState!!!");
+        announce_msg_.lat = 0;
+        announce_msg_.lon = 0;
+        announce_msg_.height = 0;
       }
 
       // Services collection
