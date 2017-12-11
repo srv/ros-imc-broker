@@ -43,6 +43,7 @@
 #include <ros_imc_broker/BrokerParamsConfig.h>
 #include <ros_imc_broker/AdapterParamsConfig.h>
 
+#include <ros_imc_broker/Concurrency/RWLock.hpp>
 #include <ros_imc_broker/Network/NetworkUtil.hpp>
 #include <ros_imc_broker/Util/String.hpp>
 
@@ -113,10 +114,12 @@ namespace ros_imc_broker
     // External services.
     std::set<std::string> uris_ext_;
     IMC::EstimatedState* estimated_state_msg_ = NULL;
-    std::vector<boost::asio::ip::address> network_interfaces_;
+    //std::vector<boost::asio::ip::address> network_interfaces_;
     std::vector<Destination> multicast_destinations_;
     std::vector<Destination> static_destinations_;
     bool enable_loopback_;
+    Concurrency::RWLock::Mutex mutex_multicast_destinations_;
+    Concurrency::RWLock::Mutex mutex_static_destinations_;
 
     void
     onReconfigure(ros_imc_broker::AdapterParamsConfig& config, uint32_t level)
@@ -133,6 +136,7 @@ namespace ros_imc_broker
 
       enable_loopback_ = config.enable_loopback;
 
+      Concurrency::RWLock::WriteLock lock(mutex_static_destinations_);
       // Parsing static desinations
       static_destinations_.clear();
       std::vector<std::string> static_dest;
@@ -157,6 +161,7 @@ namespace ros_imc_broker
               << ex.what() << std::endl;
         }
       }
+      lock.unlock();
 
       start(config.udp_port, config.udp_port_tries, config.multicast_addr,
           config.multicast_port, config.multicast_port_range);
@@ -293,10 +298,12 @@ namespace ros_imc_broker
 
         //@FIXME Set the proper destination besides the static defined ones
         // udp_client_->send(nMsg, "127.0.0.1", 6001);
+        Concurrency::RWLock::ReadLock lock(mutex_static_destinations_);
         for (unsigned int i = 0; i < static_destinations_.size(); ++i)
         {
           udp_client_->send(nMsg, static_destinations_[i].addr, static_destinations_[i].port);
         }
+        lock.unlock();
 
         if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
         { // Let us save the estimated state
@@ -336,10 +343,12 @@ namespace ros_imc_broker
         if (nMsg->getTimeStamp() <= 0)
           nMsg->setTimeStamp(ros::Time::now().toSec());
 
+        Concurrency::RWLock::ReadLock lock(mutex_multicast_destinations_);
         for (unsigned i = 0; i < multicast_destinations_.size(); ++i)
         {
           udp_multicast_->send(nMsg, multicast_destinations_[i].addr, multicast_destinations_[i].port);
         }
+        lock.unlock();
 
         delete nMsg;
         nMsg = NULL;
@@ -419,6 +428,8 @@ namespace ros_imc_broker
     void
     probeInterfacesForMulticast(void)
     {
+      Concurrency::RWLock::WriteLock lock(mutex_multicast_destinations_);
+
       multicast_destinations_.clear();
 
       // Setup loopback.
@@ -483,6 +494,8 @@ namespace ros_imc_broker
               << ex.what() << std::endl;
         }
       }
+
+      lock.unlock();
 
       ROS_INFO("found %d multicast destinations", (int)multicast_destinations_.size());
     }
