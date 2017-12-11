@@ -330,8 +330,10 @@ namespace ros_imc_broker
               ROS_INFO("received %s message from %s@%d srcID 0x%04x", 
                   m->getName(), endpoint_.address().to_string().c_str(), 
                   endpoint_.port(), (unsigned)m->getSource());
-
-              recv_handler_(m);
+              if (recv_handler_ != NULL)
+                recv_handler_(m);
+              else
+                ROS_DEBUG("No handler to process message %s received on UDP.", m->getName());
               delete m;
             }
             else
