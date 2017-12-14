@@ -19,8 +19,8 @@
 // Author: Paulo Dias                                                     *
 //*************************************************************************
 
-#ifndef ROS_IMC_BROKER_NETWORK_UTIL_HPP_INCLUDED_
-#define ROS_IMC_BROKER_NETWORK_UTIL_HPP_INCLUDED_
+#ifndef ROS_IMC_BROKER_CONCURRENCY_RW_mutex_HPP_INCLUDED_
+#define ROS_IMC_BROKER_CONCURRENCY_RW_mutex_HPP_INCLUDED_
 
 // ISO C++ headers
 #include <cstdlib>
@@ -29,52 +29,20 @@
 #include <iostream>
 
 // Boost headers.
-#include <boost/asio.hpp>
+#include <boost/thread/shared_mutex.hpp>
 
 namespace ros_imc_broker
 {
-  //!
-  //! @author Paulo Dias <pdias@lsts.pt>
-  class NetworkUtil
+  namespace Concurrency
   {
-  public:
-
-    static
-    std::vector<boost::asio::ip::address>
-    getNetworkInterfaces()
+    class RWLock
     {
-      std::vector<boost::asio::ip::address> address_list;
-
-      boost::asio::io_service io_service;
-
-      boost::asio::ip::tcp::resolver resolver(io_service);
-      boost::asio::ip::tcp::resolver::query query(boost::asio::ip::host_name(), "");
-      boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query);
-
-      while(it != boost::asio::ip::tcp::resolver::iterator())
-      {
-          try
-          {
-            boost::asio::ip::address addr = (it++)->endpoint().address();
-            if(addr.is_v4())
-            {
-              std::cout << "IPv4 address: " << addr.to_string() << std::endl;
-              address_list.push_back(addr);
-            }
-          }
-          catch (std::exception & ex)
-          {
-            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-                << ex.what() << std::endl;
-          }
-      }
-      std::cout << "Found " << address_list.size() << " IPv4 address" << std::endl;
-      return address_list;
-    }
-
-  private:
-
-  };
-}  
+    public:
+      typedef boost::shared_mutex Mutex;
+      typedef boost::shared_lock<Mutex> ReadLock;
+      typedef boost::unique_lock<Mutex> WriteLock;
+    };
+  }
+}
 
 #endif
