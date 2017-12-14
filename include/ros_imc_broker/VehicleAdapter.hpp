@@ -37,7 +37,7 @@
 // Local headers.
 #include <ros_imc_broker/Mappings.hpp>
 #include <ros_imc_broker/TcpLink.hpp>
-#include <ros_imc_broker/UdpLink.hpp>
+#include <ros_imc_broker/Network/UdpLink.hpp>
 #include <ros_imc_broker/BrokerParamsConfig.h>
 
 namespace ros_imc_broker
@@ -75,8 +75,7 @@ namespace ros_imc_broker
     dynamic_reconfigure::Server<ros_imc_broker::BrokerParamsConfig> srv_;
 
     //! UDP client to DUNE's server.
-    UdpLink* udp_client_;
-    
+    Network::UdpLink* udp_client_;
 
     void
     onReconfigure(ros_imc_broker::BrokerParamsConfig& config, uint32_t level)
@@ -146,7 +145,7 @@ namespace ros_imc_broker
       tcp_client_->setServer(addr, port);
       tcp_client_thread_ = new boost::thread(boost::ref(*tcp_client_));
 
-      udp_client_ = new UdpLink(boost::bind(&VehicleAdapter::sendToRosBus, this, _1));
+      udp_client_ = new Network::UdpLink(boost::bind(&VehicleAdapter::sendToRosBus, this, _1));
     }
 
     //! Send message to TCP server.
