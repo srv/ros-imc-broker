@@ -195,7 +195,7 @@ namespace ros_imc_broker
       else
         return IMC::SYSTEMTYPE_UUV;
     }
-    
+
     void
     stop(void)
     {
@@ -222,7 +222,7 @@ namespace ros_imc_broker
         const int& multicast_port_range)
     {
       stop();
-      
+
       uid_ = (long)(ros::Time::now().toSec() * 1E3);
 
       udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
@@ -230,7 +230,7 @@ namespace ros_imc_broker
 
       udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
           multicast_addr, multicast_port, multicast_port_range);
-      
+
       multicast_addr_ = multicast_addr;
       multicast_port_ = multicast_port;
       multicast_port_range_ = multicast_port_range;
@@ -302,6 +302,7 @@ namespace ros_imc_broker
         for (unsigned int i = 0; i < static_destinations_.size(); ++i)
         {
           udp_client_->send(nMsg, static_destinations_[i].addr, static_destinations_[i].port);
+          std::cout << "Sending to " << static_destinations_[i].addr << std::endl;
         }
         lock.unlock();
 
@@ -473,7 +474,7 @@ namespace ros_imc_broker
           {
             if (!itfs[i].is_v4())
               continue;
-            
+
             // Discard loopback addresses. @FIXME any filter
             if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
               continue;
@@ -542,7 +543,7 @@ namespace ros_imc_broker
       std::ostringstream imcvers;
       imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
       addURI(announce_msg_, imcvers.str());
-      
+
       std::set<std::string> uris_info;
       try
       {
@@ -551,7 +552,7 @@ namespace ros_imc_broker
         {
           if (!itfs[i].is_v4())
             continue;
-          
+
           // Discard loopback addresses.
           if (itfs[i].is_loopback())
             continue;
