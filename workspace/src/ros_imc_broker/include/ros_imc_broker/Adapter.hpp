@@ -137,23 +137,32 @@ namespace ros_imc_broker
       enable_loopback_ = config.enable_loopback;
 
       Concurrency::RWLock::WriteLock lock(mutex_static_destinations_);
-      // Parsing static desinations
+      // Parsing static destinations
       static_destinations_.clear();
       std::vector<std::string> static_dest;
       Util::String::split(config.static_destinations_addrs, ",", static_dest);
       for (unsigned int i = 0; i < static_dest.size(); ++i)
       {
-        std::vector<std::string> addr_port;
-        Util::String::split(config.static_destinations_addrs, ":", addr_port);
-        if (addr_port.size() != 2)
-          continue;
         try
         {
-          Destination dst;
-          dst.port = std::atoi(addr_port[1].c_str());
-          dst.addr = addr_port[0];
-          dst.local = false;
-          static_destinations_.push_back(dst);
+          std::vector<std::string> addr_port;
+          Util::String::split(static_dest[i], ":", addr_port);
+          if (addr_port.size() != 2)
+            continue;
+          try
+          {
+            ROS_INFO("Adding static destination %s:%s", addr_port[0].c_str(), addr_port[1].c_str());
+            Destination dst;
+            dst.port = std::atoi(addr_port[1].c_str());
+            dst.addr = addr_port[0];
+            dst.local = false;
+            static_destinations_.push_back(dst);
+          }
+          catch (std::exception & ex)
+          {
+            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+                << ex.what() << std::endl;
+          }
         }
         catch (std::exception & ex)
         {
