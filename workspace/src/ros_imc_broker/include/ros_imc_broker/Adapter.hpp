@@ -83,39 +83,47 @@ namespace ros_imc_broker
     }
 
   private:
+    //! Unique ID to be used on he announce
     long uid_;
     //! ROS node handle.
     ros::NodeHandle& nh_;
-    // //! TCP client to DUNE's server.
-    // TcpLink* tcp_client_;
-    // //! TCP client thread.
-    // boost::thread* tcp_client_thread_;
     //! Map of publishers.
     std::map<unsigned, ros::Publisher> pubs_;
     //! Map of subscribers by topic.
     std::map<std::string, ros::Subscriber> subs_;
     //! Dynamic reconfigure server.
     dynamic_reconfigure::Server<ros_imc_broker::AdapterParamsConfig> srv_;
-    //! UDP client to DUNE's server.
+    //! UDP client to IMC C2.
     Network::UdpLink* udp_client_;
+    //! UDP client to multicast announces IMC C2.
     Network::UdpLink* udp_multicast_;
+    //! Multicast group address
     std::string multicast_addr_;
+    //! Multicast port
     int multicast_port_;
+    //! Multicast port range
     int multicast_port_range_;
+    //! Timers vector for periodic callouts
     std::vector<ros::Timer> timers_;
-    // Messages
+    //! Announce message to send
     IMC::Announce announce_msg_;
+    //! Heartbeat message to send
     IMC::Heartbeat heartbeat_msg_;
-    std::string system_name_;
-    IMC::SystemType system_type_;
-    int system_imc_id_;
-    // Additional external services.
-    std::vector<std::string> adi_services_ext_;
-    // External services.
-    std::set<std::string> uris_ext_;
+    //! Latest EstimatedState message received
     IMC::EstimatedState* estimated_state_msg_ = NULL;
-    //std::vector<boost::asio::ip::address> network_interfaces_;
+    //! System name
+    std::string system_name_;
+    //! System type
+    IMC::SystemType system_type_;
+    //! System IMC ID
+    int system_imc_id_;
+    //! Additional external services.
+    std::vector<std::string> adi_services_ext_;
+    //! External services.
+    std::set<std::string> uris_ext_;
+    //! Destinations to multicast
     std::vector<Destination> multicast_destinations_;
+    //! Static destinations to send messages
     std::vector<Destination> static_destinations_;
     bool enable_loopback_;
     Concurrency::RWLock::Mutex mutex_multicast_destinations_;
