@@ -35,6 +35,46 @@ namespace ros_imc_broker
 {
   namespace Network
   {
+    struct AddressPort
+    {
+      // Address.
+      std::string addr_;
+      // Port.
+      unsigned port_;
+
+      static
+      AddressPort
+      create(std::string& addr, unsigned& port)
+      {
+        AddressPort ap;
+        ap.addr_ = addr;
+        ap.port_ = port;
+        return ap;
+      }
+
+      static
+      AddressPort
+      create(const std::string& addr, const unsigned& port)
+      {
+        AddressPort ap;
+        ap.addr_.append(addr);
+        ap.port_ = port;
+        return ap;
+      }
+
+      bool
+      operator==(const AddressPort& other) const
+      {
+        return (addr_.compare(other.addr_) == 0 && port_ == other.port_);
+      }
+
+      bool
+      operator!=(const AddressPort& other) const
+      {
+        return (addr_.compare(other.addr_) != 0 || port_ != other.port_);
+      }
+    };
+
     //!
     //! @author Paulo Dias <pdias@lsts.pt>
     class NetworkUtil
