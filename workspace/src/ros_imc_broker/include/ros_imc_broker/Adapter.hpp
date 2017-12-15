@@ -454,69 +454,77 @@ namespace ros_imc_broker
     {
       Concurrency::RWLock::WriteLock lock(mutex_multicast_destinations_);
 
-      multicast_destinations_.clear();
-
-      // Setup loopback.
-      if (enable_loopback_)
+      try
       {
-        for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+        multicast_destinations_.clear();
+
+        // Setup loopback.
+        if (enable_loopback_)
         {
-          Destination dst;
-          dst.port = i;
-          dst.addr = "127.0.0.1";
-          dst.local = true;
-          multicast_destinations_.push_back(dst);
+          for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+          {
+            Destination dst;
+            dst.port = i;
+            dst.addr = "127.0.0.1";
+            dst.local = true;
+            multicast_destinations_.push_back(dst);
+          }
         }
-      }
 
-      // Setup multicast.
-      for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
-      {
-        Destination dst;
-        dst.port = i;
-        dst.addr = multicast_addr_;
-        dst.local = false;
-        multicast_destinations_.push_back(dst);
-      }
-
-      // Setup broadcast.
-      {
+        // Setup multicast.
         for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
         {
           Destination dst;
           dst.port = i;
-          dst.addr = "255.255.255.255";
+          dst.addr = multicast_addr_;
           dst.local = false;
           multicast_destinations_.push_back(dst);
         }
 
-        try
+        // Setup broadcast.
         {
-          std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
-          for (unsigned i = 0; i < itfs.size(); ++i)
+          for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
           {
-            if (!itfs[i].is_v4())
-              continue;
-            
-            // Discard loopback addresses. @FIXME any filter
-            if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
-              continue;
+            Destination dst;
+            dst.port = i;
+            dst.addr = "255.255.255.255";
+            dst.local = false;
+            multicast_destinations_.push_back(dst);
+          }
 
-            for (unsigned j = multicast_port_; j < multicast_port_ + multicast_port_range_; ++j)
+          try
+          {
+            std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
+            for (unsigned i = 0; i < itfs.size(); ++i)
             {
-              Destination dst;
-              dst.port = j;
-              dst.addr = itfs[i].to_v4().broadcast().to_string();
-              dst.local = false;
-              multicast_destinations_.push_back(dst);
+              if (!itfs[i].is_v4())
+                continue;
+              
+              // Discard loopback addresses. @FIXME any filter
+              if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
+                continue;
+
+              for (unsigned j = multicast_port_; j < multicast_port_ + multicast_port_range_; ++j)
+              {
+                Destination dst;
+                dst.port = j;
+                dst.addr = itfs[i].to_v4().broadcast().to_string();
+                dst.local = false;
+                multicast_destinations_.push_back(dst);
+              }
             }
           }
+          catch (std::exception & ex)
+          {
+            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+                << ex.what() << std::endl;
+          }
         }
-        catch (std::exception & ex)
-        {
-          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-              << ex.what() << std::endl;
-        }
+      }
+      catch (std::exception & ex)
+      {
+        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+            << ex.what() << std::endl;
       }
 
       lock.unlock();
