@@ -125,8 +125,11 @@ namespace ros_imc_broker
     std::vector<Destination> multicast_destinations_;
     //! Static destinations to send messages
     std::vector<Destination> static_destinations_;
+    //! Use or not the loopback for he multicast destinations
     bool enable_loopback_;
+    //! Mutex to lock multicast destiations vector
     Concurrency::RWLock::Mutex mutex_multicast_destinations_;
+    //! Mutex to lock static destiations vector
     Concurrency::RWLock::Mutex mutex_static_destinations_;
 
     void
