@@ -234,10 +234,10 @@ namespace ros_imc_broker
       
       uid_ = (long)(ros::Time::now().toSec() * 1E3);
 
-      udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
+      udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1, _2),
           udp_port, udp_port_tries);
 
-      udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
+      udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1, _2),
           multicast_addr, multicast_port, multicast_port_range);
       
       multicast_addr_ = multicast_addr;
@@ -261,20 +261,24 @@ namespace ros_imc_broker
       return pubs_.insert(std::pair<unsigned, ros::Publisher>(msg_id, itr->second(nh_, topic, 1000, false))).first;
     }
 
+    //! Publish an IMC message to the ROS message bus.
+    //! @param[in] msg message instance.
+    //! @param[in] endpoint message enpoint.
     void
-    sendToRosBusMulticast(const IMC::Message* msg)
+    sendToRosBusMulticast(const IMC::Message* msg, const Network::Endpoint* endpoint)
     {
       // Filter self sent messages
       if (msg->getSource() == system_imc_id_)
         return;
 
-      sendToRosBus(msg);
+      sendToRosBus(msg, endpoint);
     }
 
     //! Publish an IMC message to the ROS message bus.
     //! @param[in] msg message instance.
+    //! @param[in] endpoint message enpoint.
     void
-    sendToRosBus(const IMC::Message* msg)
+    sendToRosBus(const IMC::Message* msg, const Network::Endpoint* endpoint)
     {
       std::map<unsigned, ros::Publisher>::iterator itr = pubs_.find(msg->getId());
       if (itr == pubs_.end())
