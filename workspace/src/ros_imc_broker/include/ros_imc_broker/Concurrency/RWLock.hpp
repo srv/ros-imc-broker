@@ -19,8 +19,8 @@
 // Author: Paulo Dias                                                     *
 //*************************************************************************
 
-#ifndef ROS_IMC_BROKER_CONCURRENCY_RW_mutex_HPP_INCLUDED_
-#define ROS_IMC_BROKER_CONCURRENCY_RW_mutex_HPP_INCLUDED_
+#ifndef ROS_IMC_BROKER_CONCURRENCY_RW_LOCK_HPP_INCLUDED_
+#define ROS_IMC_BROKER_CONCURRENCY_RW_LOCK_HPP_INCLUDED_
 
 // ISO C++ headers
 #include <cstdlib>
