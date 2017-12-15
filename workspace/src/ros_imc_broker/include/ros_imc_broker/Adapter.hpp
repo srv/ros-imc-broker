@@ -46,6 +46,9 @@
 #include <ros_imc_broker/Concurrency/RWLock.hpp>
 #include <ros_imc_broker/Network/NetworkUtil.hpp>
 #include <ros_imc_broker/Util/String.hpp>
+#include <ros_imc_broker/Contacts/ContactTable.hpp>
+#include <ros_imc_broker/Contacts/Contact.hpp>
+#include <ros_imc_broker/Time/Counter.hpp>
 
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
@@ -125,12 +128,18 @@ namespace ros_imc_broker
     std::vector<Destination> multicast_destinations_;
     //! Static destinations to send messages
     std::vector<Destination> static_destinations_;
+    //! UDP contact from received packages table
+    Contacts::ContactTable contacts_;
     //! Use or not the loopback for he multicast destinations
     bool enable_loopback_;
     //! Mutex to lock multicast destiations vector
     Concurrency::RWLock::Mutex mutex_multicast_destinations_;
     //! Mutex to lock static destiations vector
     Concurrency::RWLock::Mutex mutex_static_destinations_;
+    //! Mutex to lock constacts vector
+    Concurrency::RWLock::Mutex mutex_contacts_;
+    //! Timeout for inactivity of a contact
+    ros::Duration udp_contact_timeout_;
 
     void
     onReconfigure(ros_imc_broker::AdapterParamsConfig& config, uint32_t level)
@@ -182,6 +191,9 @@ namespace ros_imc_broker
         }
       }
       lock.unlock();
+
+      udp_contact_timeout_ = ros::Duration(config.udp_contact_timeout);
+      contacts_.setTimeout(udp_contact_timeout_);
 
       start(config.udp_port, config.udp_port_tries, config.multicast_addr,
           config.multicast_port, config.multicast_port_range);
@@ -291,6 +303,10 @@ namespace ros_imc_broker
     void
     sendToRosBus(const IMC::Message* msg, const Network::Endpoint* endpoint)
     {
+      Concurrency::RWLock::WriteLock lock(mutex_contacts_);
+      contacts_.update(msg->getSource(), *endpoint);
+      lock.unlock();
+
       std::map<unsigned, ros::Publisher>::iterator itr = pubs_.find(msg->getId());
       if (itr == pubs_.end())
         return;
@@ -328,6 +344,20 @@ namespace ros_imc_broker
           udp_client_->send(nMsg, static_destinations_[i].addr, static_destinations_[i].port);
         }
         lock.unlock();
+
+        Concurrency::RWLock::ReadLock lock_contacts(mutex_contacts_);
+        std::vector<Contacts::Contact> list;
+        contacts_.getContacts(list);
+        for (unsigned int i = 0; i < list.size(); ++i)
+        {
+          if (list[i].isInactive())
+            continue;
+
+          udp_client_->send(nMsg, list[i].getAddress().addr_, list[i].getAddress().port_);
+        }
+        list.clear();
+        lock_contacts.unlock();
+
 
         if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
         { // Let us save the estimated state
