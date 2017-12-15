@@ -534,6 +534,7 @@ namespace ros_imc_broker
       announce_msg_.sys_name = system_name_;
       announce_msg_.sys_type = system_type_;
       announce_msg_.owner = IMC_NULL_ID;
+
       if (estimated_state_msg_ != NULL)
       {
         //@FIXME Calc lst, lon, height from estimated state
@@ -550,51 +551,53 @@ namespace ros_imc_broker
       }
 
       // Services collection
-      announce_msg_.services.clear();
-
-      std::ostringstream vers;
-      vers << "ros://0.0.0.0/version/" << ROS_VERSION;
-      addURI(announce_msg_, vers.str());
-
-      std::ostringstream uid;
-      uid << "ros://0.0.0.0/uid/" << uid_;
-      addURI(announce_msg_, uid.str());
-
-      std::ostringstream imcvers;
-      imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
-      addURI(announce_msg_, imcvers.str());
-      
-      std::set<std::string> uris_info;
-      try
       {
-        std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
-        for (unsigned i = 0; i < itfs.size(); ++i)
-        {
-          if (!itfs[i].is_v4())
-            continue;
-          
-          // Discard loopback addresses.
-          if (itfs[i].is_loopback())
-            continue;
+        announce_msg_.services.clear();
 
-          if (udp_client_ != NULL && udp_client_->isConnected())
+        std::ostringstream vers;
+        vers << "ros://0.0.0.0/version/" << ROS_VERSION;
+        addURIToServices(announce_msg_, vers.str());
+
+        std::ostringstream uid;
+        uid << "ros://0.0.0.0/uid/" << uid_;
+        addURIToServices(announce_msg_, uid.str());
+
+        std::ostringstream imcvers;
+        imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
+        addURIToServices(announce_msg_, imcvers.str());
+        
+        std::set<std::string> uris_info;
+        try
+        {
+          std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
+          for (unsigned i = 0; i < itfs.size(); ++i)
           {
-            std::ostringstream udps;
-            udps << "imc+udp://" << itfs[i].to_string() << ":" << udp_client_->bindedPort()
-                    << "/";
-            uris_info.insert(udps.str());
+            if (!itfs[i].is_v4())
+              continue;
+            
+            // Discard loopback addresses.
+            if (itfs[i].is_loopback())
+              continue;
+
+            if (udp_client_ != NULL && udp_client_->isConnected())
+            {
+              std::ostringstream udps;
+              udps << "imc+udp://" << itfs[i].to_string() << ":" << udp_client_->bindedPort()
+                      << "/";
+              uris_info.insert(udps.str());
+            }
           }
         }
-      }
-      catch (std::exception & ex)
-      {
-        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-            << ex.what() << std::endl;
-      }
+        catch (std::exception & ex)
+        {
+          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+              << ex.what() << std::endl;
+        }
 
-      std::set<std::string>::iterator itr = uris_info.begin();
-      for (itr = uris_info.begin(); itr != uris_info.end(); ++itr)
-        addURI(announce_msg_, *itr);
+        std::set<std::string>::iterator itr = uris_info.begin();
+        for (itr = uris_info.begin(); itr != uris_info.end(); ++itr)
+          addURIToServices(announce_msg_, *itr);
+      }
 
       announce_msg_.setDestination(IMC_MULTICAST_ID);
       announce_msg_.setTimeStamp(0);
@@ -602,14 +605,13 @@ namespace ros_imc_broker
     }
 
     void
-    addURI(IMC::Announce& announce, const std::string& uri)
+    addURIToServices(IMC::Announce& announce, const std::string& uri)
     {
       if (!announce.services.empty())
         announce.services.append(";");
 
       announce.services.append(uri);
     }
-
   };
 }
 
