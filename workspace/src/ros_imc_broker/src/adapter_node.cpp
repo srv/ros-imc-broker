@@ -23,7 +23,6 @@
 #include <ros/ros.h>
 
 // Local headers.
-#include <ros_imc_broker/VehicleAdapter.hpp>
 #include <ros_imc_broker/Adapter.hpp>
 
 int
