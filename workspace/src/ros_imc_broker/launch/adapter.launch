@@ -1,6 +1,6 @@
 <launch>
   <!--node pkg="ros_imc_broker" type="ros_imc_adapter_node" name="ros_imc_adapter_node" output="screen" launch-prefix="gdb -ex run - -args" -->
-    <node pkg="ros_imc_broker" type="ros_imc_adapter_node" name="ros_imc_adapter_node" output="screen">
+  <node pkg="ros_imc_broker" type="ros_imc_adapter_node" name="ros_imc_adapter_node" output="screen">
     <param name="system_name" value="bogus"/>
     <param name="system_type" value="uuv"/>
     <param name="system_imc_id" value="8226"/> <!--0x2022-->
