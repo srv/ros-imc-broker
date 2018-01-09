@@ -49,6 +49,7 @@
 #include <ros_imc_broker/Contacts/ContactTable.hpp>
 #include <ros_imc_broker/Contacts/Contact.hpp>
 #include <ros_imc_broker/Time/Counter.hpp>
+#include <ros_imc_broker/Coordinates/WGS84.hpp>
 
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
@@ -578,10 +579,17 @@ namespace ros_imc_broker
 
       if (estimated_state_msg_ != NULL)
       {
-        //@FIXME Calc lst, lon, height from estimated state
+        // Define reference.
         announce_msg_.lat = estimated_state_msg_->lat;
         announce_msg_.lon = estimated_state_msg_->lon;
         announce_msg_.height = estimated_state_msg_->height;
+
+        if (estimated_state_msg_->x != 0.0f || estimated_state_msg_->y != 0.0f 
+            || estimated_state_msg_->z != 0.0f)
+        {
+          Coordinates::WGS84::displace(estimated_state_msg_->x, estimated_state_msg_->y,
+              estimated_state_msg_->z, &announce_msg_.lat, &announce_msg_.lon, &announce_msg_.height);
+        }
       }
       else
       {
