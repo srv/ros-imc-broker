@@ -1,5 +1,5 @@
 //*************************************************************************
-// Copyright (C) 2017 FEUP-LSTS - www.lsts.pt                             *
+// Copyright (C) 2017-2018 FEUP-LSTS - www.lsts.pt                        *
 //*************************************************************************
 // This program is free software; you can redistribute it and/or modify   *
 // it under the terms of the GNU General Public License as published by   *
@@ -46,6 +46,10 @@
 #include <ros_imc_broker/Concurrency/RWLock.hpp>
 #include <ros_imc_broker/Network/NetworkUtil.hpp>
 #include <ros_imc_broker/Util/String.hpp>
+#include <ros_imc_broker/Contacts/ContactTable.hpp>
+#include <ros_imc_broker/Contacts/Contact.hpp>
+#include <ros_imc_broker/Time/Counter.hpp>
+#include <ros_imc_broker/Coordinates/WGS84.hpp>
 
 #define IMC_NULL_ID 0xFFFF
 #define IMC_MULTICAST_ID 0x0000
@@ -83,43 +87,60 @@ namespace ros_imc_broker
     }
 
   private:
+    //! Unique ID to be used on he announce
     long uid_;
     //! ROS node handle.
     ros::NodeHandle& nh_;
-    // //! TCP client to DUNE's server.
-    // TcpLink* tcp_client_;
-    // //! TCP client thread.
-    // boost::thread* tcp_client_thread_;
     //! Map of publishers.
     std::map<unsigned, ros::Publisher> pubs_;
     //! Map of subscribers by topic.
     std::map<std::string, ros::Subscriber> subs_;
     //! Dynamic reconfigure server.
     dynamic_reconfigure::Server<ros_imc_broker::AdapterParamsConfig> srv_;
-    //! UDP client to DUNE's server.
+    //! UDP client to IMC C2.
     Network::UdpLink* udp_client_;
+    //! UDP client to multicast announces IMC C2.
     Network::UdpLink* udp_multicast_;
+    //! Multicast group address
     std::string multicast_addr_;
+    //! Multicast port
     int multicast_port_;
+    //! Multicast port range
     int multicast_port_range_;
+    //! Timers vector for periodic callouts
     std::vector<ros::Timer> timers_;
-    // Messages
+    //! Announce message to send
     IMC::Announce announce_msg_;
+    //! Heartbeat message to send
     IMC::Heartbeat heartbeat_msg_;
-    std::string system_name_;
-    IMC::SystemType system_type_;
-    int system_imc_id_;
-    // Additional external services.
-    std::vector<std::string> adi_services_ext_;
-    // External services.
-    std::set<std::string> uris_ext_;
+    //! Latest EstimatedState message received
     IMC::EstimatedState* estimated_state_msg_ = NULL;
-    //std::vector<boost::asio::ip::address> network_interfaces_;
+    //! System name
+    std::string system_name_;
+    //! System type
+    IMC::SystemType system_type_;
+    //! System IMC ID
+    int system_imc_id_;
+    //! Additional external services.
+    std::vector<std::string> adi_services_ext_;
+    //! External services.
+    std::set<std::string> uris_ext_;
+    //! Destinations to multicast
     std::vector<Destination> multicast_destinations_;
+    //! Static destinations to send messages
     std::vector<Destination> static_destinations_;
+    //! UDP contact from received packages table
+    Contacts::ContactTable contacts_;
+    //! Use or not the loopback for he multicast destinations
     bool enable_loopback_;
+    //! Mutex to lock multicast destiations vector
     Concurrency::RWLock::Mutex mutex_multicast_destinations_;
+    //! Mutex to lock static destiations vector
     Concurrency::RWLock::Mutex mutex_static_destinations_;
+    //! Mutex to lock constacts vector
+    Concurrency::RWLock::Mutex mutex_contacts_;
+    //! Timeout for inactivity of a contact
+    ros::Duration udp_contact_timeout_;
 
     void
     onReconfigure(ros_imc_broker::AdapterParamsConfig& config, uint32_t level)
@@ -137,23 +158,32 @@ namespace ros_imc_broker
       enable_loopback_ = config.enable_loopback;
 
       Concurrency::RWLock::WriteLock lock(mutex_static_destinations_);
-      // Parsing static desinations
+      // Parsing static destinations
       static_destinations_.clear();
       std::vector<std::string> static_dest;
       Util::String::split(config.static_destinations_addrs, ",", static_dest);
       for (unsigned int i = 0; i < static_dest.size(); ++i)
       {
-        std::vector<std::string> addr_port;
-        Util::String::split(config.static_destinations_addrs, ":", addr_port);
-        if (addr_port.size() != 2)
-          continue;
         try
         {
-          Destination dst;
-          dst.port = std::atoi(addr_port[1].c_str());
-          dst.addr = addr_port[0];
-          dst.local = false;
-          static_destinations_.push_back(dst);
+          std::vector<std::string> addr_port;
+          Util::String::split(static_dest[i], ":", addr_port);
+          if (addr_port.size() != 2)
+            continue;
+          try
+          {
+            ROS_INFO("Adding static destination %s:%s", addr_port[0].c_str(), addr_port[1].c_str());
+            Destination dst;
+            dst.port = std::atoi(addr_port[1].c_str());
+            dst.addr = addr_port[0];
+            dst.local = false;
+            static_destinations_.push_back(dst);
+          }
+          catch (std::exception & ex)
+          {
+            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+                << ex.what() << std::endl;
+          }
         }
         catch (std::exception & ex)
         {
@@ -162,6 +192,9 @@ namespace ros_imc_broker
         }
       }
       lock.unlock();
+
+      udp_contact_timeout_ = ros::Duration(config.udp_contact_timeout);
+      contacts_.setTimeout(udp_contact_timeout_);
 
       start(config.udp_port, config.udp_port_tries, config.multicast_addr,
           config.multicast_port, config.multicast_port_range);
@@ -225,10 +258,10 @@ namespace ros_imc_broker
       
       uid_ = (long)(ros::Time::now().toSec() * 1E3);
 
-      udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1),
+      udp_client_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBus, this, _1, _2),
           udp_port, udp_port_tries);
 
-      udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1),
+      udp_multicast_ = new Network::UdpLink(boost::bind(&Adapter::sendToRosBusMulticast, this, _1, _2),
           multicast_addr, multicast_port, multicast_port_range);
       
       multicast_addr_ = multicast_addr;
@@ -252,21 +285,29 @@ namespace ros_imc_broker
       return pubs_.insert(std::pair<unsigned, ros::Publisher>(msg_id, itr->second(nh_, topic, 1000, false))).first;
     }
 
+    //! Publish an IMC message to the ROS message bus.
+    //! @param[in] msg message instance.
+    //! @param[in] endpoint message enpoint.
     void
-    sendToRosBusMulticast(const IMC::Message* msg)
+    sendToRosBusMulticast(const IMC::Message* msg, const Network::Endpoint* endpoint)
     {
       // Filter self sent messages
       if (msg->getSource() == system_imc_id_)
         return;
 
-      sendToRosBus(msg);
+      sendToRosBus(msg, endpoint);
     }
 
     //! Publish an IMC message to the ROS message bus.
     //! @param[in] msg message instance.
+    //! @param[in] endpoint message enpoint.
     void
-    sendToRosBus(const IMC::Message* msg)
+    sendToRosBus(const IMC::Message* msg, const Network::Endpoint* endpoint)
     {
+      Concurrency::RWLock::WriteLock lock(mutex_contacts_);
+      contacts_.update(msg->getSource(), *endpoint);
+      lock.unlock();
+
       std::map<unsigned, ros::Publisher>::iterator itr = pubs_.find(msg->getId());
       if (itr == pubs_.end())
         return;
@@ -304,6 +345,20 @@ namespace ros_imc_broker
           udp_client_->send(nMsg, static_destinations_[i].addr, static_destinations_[i].port);
         }
         lock.unlock();
+
+        Concurrency::RWLock::ReadLock lock_contacts(mutex_contacts_);
+        std::vector<Contacts::Contact> list;
+        contacts_.getContacts(list);
+        for (unsigned int i = 0; i < list.size(); ++i)
+        {
+          if (list[i].isInactive())
+            continue;
+
+          udp_client_->send(nMsg, list[i].getAddress().addr_, list[i].getAddress().port_);
+        }
+        list.clear();
+        lock_contacts.unlock();
+
 
         if (nMsg->getId() == IMC::EstimatedState::getIdStatic())
         { // Let us save the estimated state
@@ -430,69 +485,77 @@ namespace ros_imc_broker
     {
       Concurrency::RWLock::WriteLock lock(mutex_multicast_destinations_);
 
-      multicast_destinations_.clear();
-
-      // Setup loopback.
-      if (enable_loopback_)
+      try
       {
-        for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+        multicast_destinations_.clear();
+
+        // Setup loopback.
+        if (enable_loopback_)
         {
-          Destination dst;
-          dst.port = i;
-          dst.addr = "127.0.0.1";
-          dst.local = true;
-          multicast_destinations_.push_back(dst);
+          for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
+          {
+            Destination dst;
+            dst.port = i;
+            dst.addr = "127.0.0.1";
+            dst.local = true;
+            multicast_destinations_.push_back(dst);
+          }
         }
-      }
 
-      // Setup multicast.
-      for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
-      {
-        Destination dst;
-        dst.port = i;
-        dst.addr = multicast_addr_;
-        dst.local = false;
-        multicast_destinations_.push_back(dst);
-      }
-
-      // Setup broadcast.
-      {
+        // Setup multicast.
         for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
         {
           Destination dst;
           dst.port = i;
-          dst.addr = "255.255.255.255";
+          dst.addr = multicast_addr_;
           dst.local = false;
           multicast_destinations_.push_back(dst);
         }
 
-        try
+        // Setup broadcast.
         {
-          std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
-          for (unsigned i = 0; i < itfs.size(); ++i)
+          for (unsigned i = multicast_port_; i < multicast_port_ + multicast_port_range_; ++i)
           {
-            if (!itfs[i].is_v4())
-              continue;
-            
-            // Discard loopback addresses. @FIXME any filter
-            if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
-              continue;
+            Destination dst;
+            dst.port = i;
+            dst.addr = "255.255.255.255";
+            dst.local = false;
+            multicast_destinations_.push_back(dst);
+          }
 
-            for (unsigned j = multicast_port_; j < multicast_port_ + multicast_port_range_; ++j)
+          try
+          {
+            std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
+            for (unsigned i = 0; i < itfs.size(); ++i)
             {
-              Destination dst;
-              dst.port = j;
-              dst.addr = itfs[i].to_v4().broadcast().to_string();
-              dst.local = false;
-              multicast_destinations_.push_back(dst);
+              if (!itfs[i].is_v4())
+                continue;
+              
+              // Discard loopback addresses. @FIXME any filter
+              if (itfs[i].is_loopback() || itfs[i].to_v4().broadcast() == itfs[i].to_v4().broadcast().any())
+                continue;
+
+              for (unsigned j = multicast_port_; j < multicast_port_ + multicast_port_range_; ++j)
+              {
+                Destination dst;
+                dst.port = j;
+                dst.addr = itfs[i].to_v4().broadcast().to_string();
+                dst.local = false;
+                multicast_destinations_.push_back(dst);
+              }
             }
           }
+          catch (std::exception & ex)
+          {
+            std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+                << ex.what() << std::endl;
+          }
         }
-        catch (std::exception & ex)
-        {
-          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-              << ex.what() << std::endl;
-        }
+      }
+      catch (std::exception & ex)
+      {
+        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+            << ex.what() << std::endl;
       }
 
       lock.unlock();
@@ -513,12 +576,20 @@ namespace ros_imc_broker
       announce_msg_.sys_name = system_name_;
       announce_msg_.sys_type = system_type_;
       announce_msg_.owner = IMC_NULL_ID;
+
       if (estimated_state_msg_ != NULL)
       {
-        //@FIXME Calc lst, lon, height from estimated state
+        // Define reference.
         announce_msg_.lat = estimated_state_msg_->lat;
         announce_msg_.lon = estimated_state_msg_->lon;
         announce_msg_.height = estimated_state_msg_->height;
+
+        if (estimated_state_msg_->x != 0.0f || estimated_state_msg_->y != 0.0f 
+            || estimated_state_msg_->z != 0.0f)
+        {
+          Coordinates::WGS84::displace(estimated_state_msg_->x, estimated_state_msg_->y,
+              estimated_state_msg_->z, &announce_msg_.lat, &announce_msg_.lon, &announce_msg_.height);
+        }
       }
       else
       {
@@ -529,51 +600,53 @@ namespace ros_imc_broker
       }
 
       // Services collection
-      announce_msg_.services.clear();
-
-      std::ostringstream vers;
-      vers << "ros://0.0.0.0/version/" << ROS_VERSION;
-      addURI(announce_msg_, vers.str());
-
-      std::ostringstream uid;
-      uid << "ros://0.0.0.0/uid/" << uid_;
-      addURI(announce_msg_, uid.str());
-
-      std::ostringstream imcvers;
-      imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
-      addURI(announce_msg_, imcvers.str());
-      
-      std::set<std::string> uris_info;
-      try
       {
-        std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
-        for (unsigned i = 0; i < itfs.size(); ++i)
-        {
-          if (!itfs[i].is_v4())
-            continue;
-          
-          // Discard loopback addresses.
-          if (itfs[i].is_loopback())
-            continue;
+        announce_msg_.services.clear();
 
-          if (udp_client_ != NULL && udp_client_->isConnected())
+        std::ostringstream vers;
+        vers << "ros://0.0.0.0/version/" << ROS_VERSION;
+        addURIToServices(announce_msg_, vers.str());
+
+        std::ostringstream uid;
+        uid << "ros://0.0.0.0/uid/" << uid_;
+        addURIToServices(announce_msg_, uid.str());
+
+        std::ostringstream imcvers;
+        imcvers << "imc+info://0.0.0.0/version/" << IMC_CONST_VERSION;
+        addURIToServices(announce_msg_, imcvers.str());
+        
+        std::set<std::string> uris_info;
+        try
+        {
+          std::vector<boost::asio::ip::address> itfs = Network::NetworkUtil::getNetworkInterfaces();
+          for (unsigned i = 0; i < itfs.size(); ++i)
           {
-            std::ostringstream udps;
-            udps << "imc+udp://" << itfs[i].to_string() << ":" << udp_client_->bindedPort()
-                    << "/";
-            uris_info.insert(udps.str());
+            if (!itfs[i].is_v4())
+              continue;
+            
+            // Discard loopback addresses.
+            if (itfs[i].is_loopback())
+              continue;
+
+            if (udp_client_ != NULL && udp_client_->isConnected())
+            {
+              std::ostringstream udps;
+              udps << "imc+udp://" << itfs[i].to_string() << ":" << udp_client_->bindedPort()
+                      << "/";
+              uris_info.insert(udps.str());
+            }
           }
         }
-      }
-      catch (std::exception & ex)
-      {
-        std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
-            << ex.what() << std::endl;
-      }
+        catch (std::exception & ex)
+        {
+          std::cerr << "[" << boost::this_thread::get_id() << "] Exception: "
+              << ex.what() << std::endl;
+        }
 
-      std::set<std::string>::iterator itr = uris_info.begin();
-      for (itr = uris_info.begin(); itr != uris_info.end(); ++itr)
-        addURI(announce_msg_, *itr);
+        std::set<std::string>::iterator itr = uris_info.begin();
+        for (itr = uris_info.begin(); itr != uris_info.end(); ++itr)
+          addURIToServices(announce_msg_, *itr);
+      }
 
       announce_msg_.setDestination(IMC_MULTICAST_ID);
       announce_msg_.setTimeStamp(0);
@@ -581,14 +654,13 @@ namespace ros_imc_broker
     }
 
     void
-    addURI(IMC::Announce& announce, const std::string& uri)
+    addURIToServices(IMC::Announce& announce, const std::string& uri)
     {
       if (!announce.services.empty())
         announce.services.append(";");
 
       announce.services.append(uri);
     }
-
   };
 }
 

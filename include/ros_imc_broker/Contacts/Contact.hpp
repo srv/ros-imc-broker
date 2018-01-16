@@ -16,11 +16,12 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA          *
 // 02110-1301 USA.                                                        *
 //*************************************************************************
-// Author: Paulo Dias                                                     *
+// Author: Ricardo Martins (oriinal)                                      *
+// Author: Paulo Dias (changed to ROS)                                    *
 //*************************************************************************
 
-#ifndef ROS_IMC_BROKER_CONCURRENCY_RW_LOCK_HPP_INCLUDED_
-#define ROS_IMC_BROKER_CONCURRENCY_RW_LOCK_HPP_INCLUDED_
+#ifndef ROS_IMC_BROKER_CONTACTS_CONTACT_HPP_INCLUDED_
+#define ROS_IMC_BROKER_CONTACTS_CONTACT_HPP_INCLUDED_
 
 // ISO C++ headers
 #include <cstdlib>
@@ -28,19 +29,71 @@
 #include <string>
 #include <iostream>
 
-// Boost headers.
-#include <boost/thread/shared_mutex.hpp>
+
+#include <ros_imc_broker/Network/NetworkUtil.hpp>
+#include <ros_imc_broker/Time/Counter.hpp>
 
 namespace ros_imc_broker
 {
-  namespace Concurrency
+  namespace Contacts
   {
-    class RWLock
+    //! .
+    class Contact
     {
     public:
-      typedef boost::shared_mutex Mutex;
-      typedef boost::shared_lock<Mutex> ReadLock;
-      typedef boost::unique_lock<Mutex> WriteLock;
+      Contact(unsigned id, const Network::AddressPort& addr):
+        id_(id),
+        addr_(addr)
+      { }
+
+      Contact(unsigned id, const std::string& addr, const unsigned& port):
+        id_(id),
+        addr_(Network::AddressPort::create(addr, port))
+      { }
+
+      void
+      setTimeout(ros::Duration& tout)
+      {
+        counter_.setTop(tout);
+      }
+
+      void
+      update(void)
+      {
+        counter_.reset();
+      }
+
+      unsigned
+      getId(void) const
+      {
+        return id_;
+      }
+
+      const Network::AddressPort&
+      getAddress(void) const
+      {
+        return addr_;
+      }
+
+      bool
+      isInactive(void)
+      {
+        return counter_.overflow();
+      }
+
+      bool
+      isActive(void)
+      {
+        return !isInactive();
+      }
+
+    private:
+      // Node id.
+      unsigned id_;
+      // Node address.
+      Network::AddressPort addr_;
+      // Counter to check if node is no longer reachable.
+      Time::Counter counter_;
     };
   }
 }
