@@ -1,5 +1,5 @@
 //*************************************************************************
-// Copyright (C) 2017 FEUP-LSTS - www.lsts.pt                             *
+// Copyright (C) 2017-2018 FEUP-LSTS - www.lsts.pt                        *
 //*************************************************************************
 // This program is free software; you can redistribute it and/or modify   *
 // it under the terms of the GNU General Public License as published by   *
@@ -47,6 +47,8 @@ namespace ros_imc_broker
 {
   namespace Network
   {
+    typedef boost::asio::ip::udp::endpoint Endpoint;
+
     //! UDP link to Neptus.
     //
     //! This class implements a UDP server that can be used as normal
@@ -58,7 +60,7 @@ namespace ros_imc_broker
     public:
       //! Constructor for default multicast port. It starts automaticaly.
       //! @param[in] recv_handler handler function for received messages.
-      UdpLink(boost::function<void (IMC::Message*)> recv_handler):
+      UdpLink(boost::function<void (IMC::Message*, Endpoint*)> recv_handler):
         socket_(io_service_, boost::asio::ip::udp::v4()),
         recv_handler_(recv_handler),
         connected_(false),
@@ -78,8 +80,8 @@ namespace ros_imc_broker
       //! @param[in] port the port to bind to.
       //! @param[in] port_range the port range to use, it will bind to one of it and send to all.
       //! @param[in] broadcast if broadcast is used or not.
-      UdpLink(boost::function<void (IMC::Message*)> recv_handler, std::string multicast_addr,
-          int port, int port_range = 1, bool broadcast = true):
+      UdpLink(boost::function<void (IMC::Message*, Endpoint*)> recv_handler,
+          std::string multicast_addr, int port, int port_range = 1, bool broadcast = true):
         socket_(io_service_, boost::asio::ip::udp::v4()),
         recv_handler_(recv_handler),
         connected_(false),
@@ -98,8 +100,8 @@ namespace ros_imc_broker
       //! @param[in] port the port to bind to.
       //! @param[in] port_range the port range to use.
       //! @param[in] broadcast if broadcast is used or not.
-      UdpLink(boost::function<void (IMC::Message*)> recv_handler, int port,
-          int port_range = 1, bool broadcast = false):
+      UdpLink(boost::function<void (IMC::Message*, Endpoint*)> recv_handler,
+          int port, int port_range = 1, bool broadcast = false):
         socket_(io_service_, boost::asio::ip::udp::v4()),
         recv_handler_(recv_handler),
         connected_(false),
@@ -186,7 +188,7 @@ namespace ros_imc_broker
         {
           try
           {
-            boost::asio::ip::udp::endpoint endpoint(boost::asio::ip::address::from_string(destination_addr), pt);
+            Endpoint endpoint(boost::asio::ip::address::from_string(destination_addr), pt);
             socket_.async_send_to(
               boost::asio::buffer(out_buffer, rv),
               endpoint,
@@ -209,11 +211,11 @@ namespace ros_imc_broker
       //! Thread for IO service use.
       boost::thread_group worker_threads_;
       //! Callback for received IMC messages.
-      boost::function<void (IMC::Message*)> recv_handler_;
+      boost::function<void (IMC::Message*, Endpoint*)> recv_handler_;
       //! UDP socket.
       boost::asio::ip::udp::socket socket_;
       //! Received message endpoint
-      boost::asio::ip::udp::endpoint endpoint_;
+      Endpoint endpoint_;
       //! Max buffer size enum
       enum { max_length = MAX_BUFFER_LENGTH };
       //! Incoming data buffer.
@@ -268,7 +270,7 @@ namespace ros_imc_broker
           try
           {
             port_used = port_ + i;
-            socket_.bind(boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v4(), port_used));
+            socket_.bind(Endpoint(boost::asio::ip::udp::v4(), port_used));
             bound = true;
             port_binded_ = port_used;
             break;
@@ -333,9 +335,15 @@ namespace ros_imc_broker
                     m->getName(), endpoint_.address().to_string().c_str(), 
                     endpoint_.port(), (unsigned)m->getSource());
                 if (recv_handler_ != NULL)
-                  recv_handler_(m);
+                {
+                  Endpoint* ep;
+                  ep = new Endpoint(endpoint_);
+                  recv_handler_(m, ep);
+                }
                 else
+                {
                   ROS_DEBUG("No handler to process message %s received on UDP.", m->getName());
+                }
                 delete m;
               }
               else

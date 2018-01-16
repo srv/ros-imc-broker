@@ -49,6 +49,19 @@ IMC broker, and the Follow Reference Controller node. This simple
 controller uses DUNE's high-level control layer to move the vehicle around
 a square.
 
+* To launch the adapter issue the following command
+  inside the running container:
+
+```
+bash startAdapter.bash
+```
+
+This will launch the adapter. This allows the connection of a ROS node(s)
+to process IMC messages and also forward the ROS generated IMC messages to
+IMC enables command and control C2.
+
+In this case DUNE is not required.
+
 Updating IMC definitions
 ========================
 
