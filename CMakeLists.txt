@@ -124,7 +124,7 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES imc_broker_factory
+  LIBRARIES imc_broker_factory md5
   CATKIN_DEPENDS roscpp std_msgs message_runtime
   DEPENDS Boost
 )
@@ -138,8 +138,15 @@ catkin_package(
 # include_directories(include)
 include_directories(
   include
+  vendor/libraries
   ${catkin_INCLUDE_DIRS}
 )
+
+# Bundled Libraries.
+file(GLOB extlibs ${PROJECT_SOURCE_DIR}/vendor/libraries/*/Library.cmake)
+foreach(extlib ${extlibs})
+  include(${extlib})
+endforeach(extlib ${extlibs})
 
 ## Declare a C++ library
 # add_library(ros_imc_broker
@@ -166,20 +173,24 @@ add_dependencies(ros_imc_adapter_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(ros_imc_broker_node
+  md5
   ${catkin_LIBRARIES}
   imc_broker_factory
 )
 
 target_link_libraries(follow_reference_node
+  md5
   ${catkin_LIBRARIES}
   imc_broker_factory
 )
 
 target_link_libraries(params_changer_node
+  md5
   ${catkin_LIBRARIES}
 )
 
 target_link_libraries(ros_imc_adapter_node
+  md5
   ${catkin_LIBRARIES}
   imc_broker_factory
 )
