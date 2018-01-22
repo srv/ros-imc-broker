@@ -43,6 +43,7 @@
 #include <ros_imc_broker/BrokerParamsConfig.h>
 #include <ros_imc_broker/AdapterParamsConfig.h>
 
+#include <ros_imc_broker/Algorithms/MD5.hpp>
 #include <ros_imc_broker/Concurrency/RWLock.hpp>
 #include <ros_imc_broker/Network/NetworkUtil.hpp>
 #include <ros_imc_broker/Util/String.hpp>
@@ -307,6 +308,44 @@ namespace ros_imc_broker
       Concurrency::RWLock::WriteLock lock(mutex_contacts_);
       contacts_.update(msg->getSource(), *endpoint);
       lock.unlock();
+
+      try
+      {
+        if (msg->getId() == IMC::PlanDB::getIdStatic())
+        {
+          IMC::Message* nmsg = const_cast<IMC::Message*>(msg);
+          IMC::PlanDB* planDB;
+          planDB = IMC::PlanDB::cast(nmsg);
+          if (planDB->type == 0 && planDB->op == 0)
+          {
+            const IMC::Message* m;
+            planDB->arg.get(m);
+
+            if (m->getId() == IMC::PlanSpecification::getIdStatic())
+            {
+              const IMC::PlanSpecification* plan_specification;
+              planDB->arg.get(plan_specification);
+              
+              unsigned int sizeP = (unsigned int)plan_specification->getPayloadSerializationSize();
+              uint8_t buffer[65535];
+              plan_specification->serializeFields(buffer);
+
+              std::vector<char> digest;
+              digest.resize(16);
+              Algorithms::MD5::compute((uint8_t*)&buffer[0], sizeP, (uint8_t*)&digest[0]);
+              ROS_INFO("PlanDB Set Plan '%s' with MD5 %02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x", 
+                  plan_specification->plan_id.c_str(),
+                  (uint8_t)digest[0], (uint8_t)digest[1], (uint8_t)digest[2], (uint8_t)digest[3],
+                  (uint8_t)digest[4], (uint8_t)digest[5], (uint8_t)digest[6], (uint8_t)digest[7],
+                  (uint8_t)digest[8], (uint8_t)digest[9], (uint8_t)digest[10],(uint8_t) digest[11],
+                  (uint8_t)digest[12], (uint8_t) digest[13], (uint8_t)digest[14], (uint8_t)digest[15]);
+            }
+          }
+        }
+      }
+      catch (const std::exception&)
+      {
+      }
 
       std::map<unsigned, ros::Publisher>::iterator itr = pubs_.find(msg->getId());
       if (itr == pubs_.end())
