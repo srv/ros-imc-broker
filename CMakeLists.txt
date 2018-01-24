@@ -123,8 +123,8 @@ generate_dynamic_reconfigure_options(
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
-  INCLUDE_DIRS include
-  LIBRARIES imc_broker_factory md5
+  INCLUDE_DIRS include vendor/libraries
+  LIBRARIES imc_broker_factory ros_imc_md5
   CATKIN_DEPENDS roscpp std_msgs message_runtime
   DEPENDS Boost
 )
@@ -162,8 +162,8 @@ endforeach(extlib ${extlibs})
 add_library(imc_broker_factory include/IMC/Base/Factory.cpp)
 add_executable(ros_imc_broker_node src/broker_node.cpp)
 add_dependencies(ros_imc_broker_node ${PROJECT_NAME}_gencfg)
-add_executable(follow_reference_node src/follow_reference_node.cpp include/IMC/Base/Factory.cpp)
-add_executable(params_changer_node src/params_changer_node.cpp include/IMC/Base/Factory.cpp)
+# add_executable(follow_reference_node src/follow_reference_node.cpp include/IMC/Base/Factory.cpp)
+# add_executable(params_changer_node src/params_changer_node.cpp include/IMC/Base/Factory.cpp)
 add_executable(ros_imc_adapter_node src/adapter_node.cpp include/IMC/Base/Factory.cpp)
 add_dependencies(ros_imc_adapter_node ${PROJECT_NAME}_gencfg)
 
@@ -173,26 +173,26 @@ add_dependencies(ros_imc_adapter_node ${PROJECT_NAME}_gencfg)
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(ros_imc_broker_node
-  md5
-  ${catkin_LIBRARIES}
+  ros_imc_md5
   imc_broker_factory
+  ${catkin_LIBRARIES}
 )
 
-target_link_libraries(follow_reference_node
-  md5
-  ${catkin_LIBRARIES}
-  imc_broker_factory
-)
+# target_link_libraries(follow_reference_node
+#   ros_imc_md5
+#   ${catkin_LIBRARIES}
+#   imc_broker_factory
+# )
 
-target_link_libraries(params_changer_node
-  md5
-  ${catkin_LIBRARIES}
-)
+# target_link_libraries(params_changer_node
+#   ros_imc_md5
+#   ${catkin_LIBRARIES}
+# )
 
 target_link_libraries(ros_imc_adapter_node
-  md5
-  ${catkin_LIBRARIES}
+  ros_imc_md5
   imc_broker_factory
+  ${catkin_LIBRARIES}
 )
 
 #############
@@ -210,7 +210,7 @@ target_link_libraries(ros_imc_adapter_node
 # )
 
 ## Mark executables and/or libraries for installation
-install(TARGETS imc_broker_factory ros_imc_broker_node follow_reference_node params_changer_node ros_imc_adapter_node
+install(TARGETS imc_broker_factory ros_imc_broker_node ros_imc_adapter_node
   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
